@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <title>Lista de Pedidos</title>
+</head>
+<body>
+
+<div th:fragment="content">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold mb-0">
+            <i class="bi bi-bag me-2 text-primary"></i>Pedidos
+        </h2>
+        <a href="/pedidos/novo" class="btn btn-primary" sec:authorize="hasAnyRole('GERENTE','ATENDENTE')">
+            <i class="bi bi-plus-lg me-1"></i> Novo Pedido
+        </a>
+    </div>
+
+    <div class="alert alert-success alert-dismissible fade show" th:if="${sucesso}" role="alert">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        <span th:text="${sucesso}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    <div class="alert alert-danger alert-dismissible fade show" th:if="${erro}" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <span th:text="${erro}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                <tr>
+                    <th class="ps-4">ID</th>
+                    <th>Cliente</th>
+                    <th>Itens</th>
+                    <th>Total</th>
+                    <th>Responsável</th>
+                    <th>Entrada</th>
+                    <th>Saída</th>
+                    <th>Status</th>
+                    <th class="text-end pe-4" sec:authorize="hasAnyRole('GERENTE','ATENDENTE')">Ações</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:if="${#lists.isEmpty(pedidos)}">
+                    <td colspan="9" class="text-center text-muted py-5">
+                        <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                        Nenhum pedido encontrado.
+                    </td>
+                </tr>
+                <tr th:each="pedido : ${pedidos}">
+                    <td class="ps-4 text-muted" th:text="${pedido.id}"></td>
+                    <td th:text="${nomesClientes.get(pedido.clienteId) ?: pedido.clienteId}"></td>
+                    <td>
+                        <div th:each="item : ${pedido.itens}"
+                             th:text="${item.quantidade + '× ' + item.nomeProduto}"></div>
+                    </td>
+                    <td th:text="${'R$ ' + #numbers.formatDecimal(pedido.valorTotal, 1, 'POINT', 2, 'COMMA')}"></td>
+                    <td th:text="${pedido.responsavel}"></td>
+                    <td th:text="${#temporals.format(pedido.dataEntrada, 'dd/MM/yyyy HH:mm')}"></td>
+                    <td>
+                            <span th:if="${pedido.dataSaida != null}">
+                                <span th:text="${#temporals.format(pedido.dataSaida, 'dd/MM/yyyy HH:mm')}"></span><br>
+                                <small class="text-muted" th:text="${pedido.responsavelSaida}"></small>
+                            </span>
+                        <span th:if="${pedido.dataSaida == null}" class="text-muted">—</span>
+                    </td>
+                    <td>
+                            <span class="badge"
+                                  th:classappend="${pedido.status?.name() == 'FINALIZADO'} ? 'bg-success' :
+                                                  (${pedido.status?.name() == 'CANCELADO'} ? 'bg-danger' :
+                                                  (${pedido.status?.name() == 'EM_PREPARACAO'} ? 'bg-warning text-dark' : 'bg-secondary'))"
+                                  th:text="${pedido.status?.descricao}">
+                            </span>
+                    </td>
+                    <td class="text-end pe-4" sec:authorize="hasAnyRole('GERENTE','ATENDENTE')">
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-1"
+                                th:each="proximo : ${pedido.status?.proximosStatus()}"
+                                th:text="${'→ ' + proximo.descricao}"
+                                th:attr="data-pedido-id=${pedido.id}, data-status=${proximo.name()}"
+                                onclick="mudarStatus(this)">
+                        </button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer text-muted small" th:if="${!#lists.isEmpty(pedidos)}">
+            Total: <strong th:text="${#lists.size(pedidos)}"></strong> pedido(s)
+        </div>
+    </div>
+
+    <script>
+        async function mudarStatus(botao) {
+            const id = botao.dataset.pedidoId;
+            const status = botao.dataset.status;
+            const csrfToken = document.querySelector('meta[name="_csrf"]').content;
+            const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+
+            const resposta = await fetch(`/api/pedidos/${id}/status?status=${status}`, {
+                method: 'PUT',
+                headers: { [csrfHeader]: csrfToken }
+            });
+
+            if (resposta.ok) {
+                window.location.reload();
+            } else {
+                let mensagem = 'Erro ao atualizar o status.';
+                try {
+                    const dados = await resposta.json();
+                    if (dados.erro) mensagem = dados.erro;
+                } catch (e) { /* mantém a mensagem padrão */ }
+                alert(mensagem);
+            }
+        }
+    </script>
+
+</div>
+
+</body>
+</html>

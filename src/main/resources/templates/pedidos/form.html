@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Novo Pedido</title>
+</head>
+<body>
+
+<div th:fragment="content">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold mb-0">
+            <i class="bi bi-bag-plus me-2 text-primary"></i>Novo Pedido
+        </h2>
+        <a href="/pedidos" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Voltar
+        </a>
+    </div>
+
+    <div class="alert alert-danger d-none" id="erro-pedido" role="alert"></div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <label for="cliente" class="form-label fw-medium">Cliente</label>
+            <select id="cliente" class="form-select" required>
+                <option value="" disabled selected>Selecione o cliente</option>
+                <option th:each="c : ${clientes}"
+                        th:value="${c.id}"
+                        th:text="${c.nome + (c.telefone != null ? ' — ' + c.telefone : '')}"></option>
+            </select>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body p-0">
+            <table class="table align-middle mb-0">
+                <thead class="table-dark">
+                <tr>
+                    <th>Produto</th>
+                    <th style="width: 130px;">Quantidade</th>
+                    <th class="text-end" style="width: 150px;">Subtotal</th>
+                    <th style="width: 60px;"></th>
+                </tr>
+                </thead>
+                <tbody id="itens-tabela"></tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="adicionar-item">
+                <i class="bi bi-plus-lg me-1"></i> Adicionar item
+            </button>
+            <div>
+                <span class="text-muted small me-2">Total estimado:</span>
+                <strong id="total-estimado">R$ 0,00</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end">
+        <button type="button" class="btn btn-success" id="salvar-pedido">
+            <i class="bi bi-check-lg me-1"></i> Registrar pedido
+        </button>
+    </div>
+
+    <template id="linha-modelo">
+        <tr>
+            <td>
+                <select class="form-select produto-select">
+                    <option value="" data-preco="0" selected disabled>Selecione o produto</option>
+                    <option th:each="p : ${produtos}"
+                            th:value="${p.id}"
+                            th:attr="data-preco=${p.preco}"
+                            th:text="${p.nome + ' — R$ ' + #numbers.formatDecimal(p.preco, 1, 'POINT', 2, 'COMMA')}"></option>
+                </select>
+            </td>
+            <td>
+                <input type="number" class="form-control quantidade-input" min="1" max="99" value="1">
+            </td>
+            <td class="text-end subtotal-celula">R$ 0,00</td>
+            <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger remover-item">
+                    <i class="bi bi-trash-fill"></i>
+                </button>
+            </td>
+        </tr>
+    </template>
+
+    <script>
+        const corpo = document.getElementById('itens-tabela');
+        const modelo = document.getElementById('linha-modelo');
+        const totalEl = document.getElementById('total-estimado');
+        const erroEl = document.getElementById('erro-pedido');
+
+        function formatar(valor) {
+            return 'R$ ' + valor.toFixed(2).replace('.', ',');
+        }
+
+        function recalcular() {
+            let total = 0;
+            corpo.querySelectorAll('tr').forEach(linha => {
+                const select = linha.querySelector('.produto-select');
+                const preco = parseFloat(select.selectedOptions[0].dataset.preco || 0);
+                const quantidade = parseInt(linha.querySelector('.quantidade-input').value) || 0;
+                const subtotal = preco * quantidade;
+                linha.querySelector('.subtotal-celula').textContent = formatar(subtotal);
+                total += subtotal;
+            });
+            totalEl.textContent = formatar(total);
+        }
+
+        function adicionarLinha() {
+            corpo.appendChild(modelo.content.cloneNode(true));
+            recalcular();
+        }
+
+        corpo.addEventListener('input', recalcular);
+        corpo.addEventListener('change', recalcular);
+        corpo.addEventListener('click', evento => {
+            const botao = evento.target.closest('.remover-item');
+            if (botao) {
+                botao.closest('tr').remove();
+                recalcular();
+            }
+        });
+        document.getElementById('adicionar-item').addEventListener('click', adicionarLinha);
+
+        document.getElementById('salvar-pedido').addEventListener('click', async () => {
+            erroEl.classList.add('d-none');
+
+            const itens = [...corpo.querySelectorAll('tr')].map(linha => ({
+                produtoId: linha.querySelector('.produto-select').value,
+                quantidade: parseInt(linha.querySelector('.quantidade-input').value)
+            }));
+            const pedido = {
+                clienteId: document.getElementById('cliente').value,
+                itens: itens
+            };
+
+            const csrfToken = document.querySelector('meta[name="_csrf"]').content;
+            const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+
+            const resposta = await fetch('/api/pedidos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', [csrfHeader]: csrfToken },
+                body: JSON.stringify(pedido)
+            });
+
+            if (resposta.ok) {
+                window.location.href = '/pedidos';
+            } else {
+                let mensagem = 'Erro ao registrar o pedido.';
+                try {
+                    const dados = await resposta.json();
+                    if (dados.erro) mensagem = dados.erro;
+                } catch (e) { /* mantém a mensagem padrão */ }
+                erroEl.textContent = mensagem;
+                erroEl.classList.remove('d-none');
+            }
+        });
+
+        adicionarLinha();
+    </script>
+</div>
+
+</body>
+</html>
