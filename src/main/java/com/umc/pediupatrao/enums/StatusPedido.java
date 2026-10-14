@@ -39,4 +39,8 @@ public enum StatusPedido {
     public boolean registraSaida() {
         return this == SAIU_PARA_ENTREGA || this == RETIRADO;
     }
+
+    public boolean antesDaSaida() {
+        return this == RECEBIDO || this == EM_PREPARACAO || this == PRONTO;
+    }
 }

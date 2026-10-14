@@ -72,7 +72,7 @@
                             </a>
                             <form th:action="@{/usuarios/deletar/{id}(id=${usuario.id})}"
                                   method="post" class="d-inline"
-                                  onsubmit="return confirm('Deseja realmente excluir este usuário?')">
+                                  data-confirmar="Deseja realmente excluir este usuário?">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                     <i class="bi bi-trash-fill"></i> Excluir
                                 </button>

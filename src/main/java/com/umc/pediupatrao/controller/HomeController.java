@@ -1,25 +1,19 @@
 package com.umc.pediupatrao.controller;
 
+import com.umc.pediupatrao.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.umc.pediupatrao.entity.Cliente;
 import com.umc.pediupatrao.entity.Pedido;
 import com.umc.pediupatrao.entity.Produto;
 import com.umc.pediupatrao.entity.Usuario;
-import com.umc.pediupatrao.service.ClienteService;
-import com.umc.pediupatrao.service.PedidoService;
-import com.umc.pediupatrao.service.ProdutoService;
-import com.umc.pediupatrao.service.UsuarioService;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Controller
@@ -38,6 +32,9 @@ public class HomeController {
 
     @Autowired
     private UsuarioService usuarioService;
+
+    @Autowired
+    private AuditoriaService auditoriaService;
 
     @GetMapping("/login")
     public String login() {
@@ -218,6 +215,15 @@ public class HomeController {
     // ========================
     // OUTRAS ROTAS
     // ========================
+
+    @GetMapping("/auditoria")
+    public String auditoria(@RequestParam(required = false) String entidade, Model model) {
+        model.addAttribute("registros", auditoriaService.listar(entidade));
+        model.addAttribute("entidadeSelecionada", entidade == null ? "" : entidade.toUpperCase());
+        model.addAttribute("content", "auditoria/lista :: content");
+        return "layout";
+    }
+
     @GetMapping("/configuracoes")
     public String configuracoes(Model model) {
         model.addAttribute("content", "configuracoes :: content");

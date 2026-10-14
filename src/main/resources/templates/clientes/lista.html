@@ -91,23 +91,27 @@
            });
         }
 
-        async function excluirCliente(id) {
-            if (confirm('Tem certeza que deseja excluir este cliente?')) {
-                const csrfToken = document.querySelector('meta[name="_csrf"]').content;
-                const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
-                const response = await fetch(`${API_URL}/${id}`, {
-                    method: 'DELETE',
-                    headers: { [csrfHeader]: csrfToken }
-                });
+         function excluirCliente(id) {
+            Dialogo.abrir({
+                titulo: 'Excluir cliente',
+                mensagem: 'Tem certeza que deseja excluir este cliente? Essa ação não pode ser desfeita.',
+                confirmar: 'Excluir',
+                perigo: true,
+                aoConfirmar: async () => {
+                    const csrfToken = document.querySelector('meta[name="_csrf"]').content;
+                    const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+                    const response = await fetch(`${API_URL}/${id}`, {
+                        method: 'DELETE',
+                        headers: { [csrfHeader]: csrfToken }
+                    });
+                    if (!response.ok) return lerMensagemErro(response, 'Erro ao excluir o cliente.');
 
-                if (response.ok) {
-                    alert('Cliente excluído com sucesso!');
+                    Mensagem.mostrar('Cliente excluído com sucesso!');
                     carregarClientes();
-                } else {
-                    alert('Erro ao excluir o cliente.');
+                    return null;
                 }
-            }
-        }
+            });
+         }
 
         carregarClientes();
     </script>

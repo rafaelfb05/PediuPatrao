@@ -81,8 +81,8 @@
                         <td th:text="${produto.ativo ? 'Sim' : 'Não'}">Sim</td>
                         <td>
                             <a th:href="@{/api/produtos/{id}(id=${produto.id})}" class="btn btn-warning btn-sm">Editar</a>
-                            <a th:href="@{/api/produtos/{id}(id=${produto.id})}" class="btn btn-danger btn-sm" 
-                               onclick="return confirm('Tem certeza que deseja excluir este produto?');">
+                            <a th:href="@{/api/produtos/{id}(id=${produto.id})}" class="btn btn-danger btn-sm"
+                               data-confirmar="Tem certeza que deseja excluir este produto?">
                                 Excluir
                             </a>
                         </td>

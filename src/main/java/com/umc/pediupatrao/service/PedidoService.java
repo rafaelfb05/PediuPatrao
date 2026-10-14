@@ -4,7 +4,9 @@ import com.umc.pediupatrao.dto.PedidoRequest;
 import com.umc.pediupatrao.entity.ItemPedido;
 import com.umc.pediupatrao.entity.Pedido;
 import com.umc.pediupatrao.entity.Produto;
+import com.umc.pediupatrao.entity.RegistroAuditoria;
 import com.umc.pediupatrao.enums.StatusPedido;
+import com.umc.pediupatrao.enums.TipoOperacao;
 import com.umc.pediupatrao.repository.PedidoRepository;
 import com.umc.pediupatrao.repository.ProdutoRepository;
 import com.umc.pediupatrao.exception.EstadoInvalidoException;
@@ -16,20 +18,24 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PedidoService {
 
     private static final int QUANTIDADE_MAX = 99;
+    private static final double DESCONTO_MAXIMO = 20.0;
 
     private final PedidoRepository pedidoRepository;
     private final ProdutoRepository produtoRepository;
     private final ClienteService clienteService;
+    private final AuditoriaService auditoriaService;
 
-    public PedidoService(PedidoRepository pedidoRepository, ProdutoRepository produtoRepository, ClienteService clienteService) {
+    public PedidoService(PedidoRepository pedidoRepository, ProdutoRepository produtoRepository, ClienteService clienteService, AuditoriaService auditoriaService) {
         this.pedidoRepository = pedidoRepository;
         this.produtoRepository = produtoRepository;
         this.clienteService = clienteService;
+        this.auditoriaService = auditoriaService;
     }
 
     @PreAuthorize("hasAnyRole('GERENTE','ATENDENTE')")
@@ -64,7 +70,7 @@ public class PedidoService {
             ItemPedido item = new ItemPedido();
             item.setProdutoId(produto.getId());
             item.setNomeProduto(produto.getNome());
-            item.setPrecoUnitario(produto.getPreco()); // preço vem do cadastro, não da requisição
+            item.setPrecoUnitario(produto.getPreco());
             item.setQuantidade(itemRequest.quantidade());
             pedido.getItens().add(item);
         }
@@ -75,7 +81,12 @@ public class PedidoService {
         pedido.setDataEntrada(LocalDateTime.now());
         pedido.recalcularTotal();
 
-        return pedidoRepository.save(pedido);
+        Pedido salvo = pedidoRepository.save(pedido);
+
+        auditoriaService.registrar(TipoOperacao.INCLUSAO_PEDIDO, RegistroAuditoria.PEDIDO, salvo.getId(),
+                Map.of(), auditoriaService.camposPedido(salvo), null);
+
+        return salvo;
     }
 
     public List<Pedido> listarPedidos() {
@@ -84,8 +95,7 @@ public class PedidoService {
 
     @PreAuthorize("hasAnyRole('GERENTE','ATENDENTE')")
     public Pedido atualizarStatus(String id, String status) {
-        Pedido pedido = pedidoRepository.findById(id)
-                .orElseThrow(() -> new RecursoNaoEncontradoException("Pedido não encontrado."));
+        Pedido pedido = buscarOuFalhar(id);
 
         StatusPedido atual = pedido.getStatus();
         StatusPedido destino = converterStatus(status);
@@ -98,6 +108,8 @@ public class PedidoService {
                     + atual.getDescricao() + " para " + destino.getDescricao() + ".");
         }
 
+        Map<String, String> antes = auditoriaService.camposPedido(pedido);
+
         pedido.setStatus(destino);
 
         if (destino.registraSaida()) {
@@ -105,7 +117,77 @@ public class PedidoService {
             pedido.setResponsavelSaida(usuarioLogado());
         }
 
-        return pedidoRepository.save(pedido);
+        Pedido salvo = pedidoRepository.save(pedido);
+
+        auditoriaService.registrar(TipoOperacao.ALTERACAO_STATUS, RegistroAuditoria.PEDIDO, salvo.getId(),
+                antes, auditoriaService.camposPedido(salvo), null);
+
+        return salvo;
+    }
+
+    @PreAuthorize("hasRole('GERENTE')")
+    public Pedido cancelarPedido(String id, String justificativa) {
+        if (justificativa == null || justificativa.isBlank()) {
+            throw new IllegalArgumentException("A justificativa do cancelamento é obrigatória.");
+        }
+
+        Pedido pedido = buscarOuFalhar(id);
+
+        if (pedido.getStatus() == StatusPedido.CANCELADO) {
+            throw new EstadoInvalidoException("Este pedido já está cancelado.");
+        }
+        if (!pedido.getStatus().antesDaSaida()) {
+            throw new EstadoInvalidoException("Só é possível cancelar pedidos que ainda não saíram para entrega ou retirada. Status atual: "
+                    + pedido.getStatus().getDescricao() + ".");
+        }
+
+        Map<String, String> antes = auditoriaService.camposPedido(pedido);
+
+        pedido.setStatus(StatusPedido.CANCELADO);
+        pedido.setJustificativaCancelamento(justificativa.trim());
+        pedido.setDataCancelamento(LocalDateTime.now());
+        pedido.setResponsavelCancelamento(usuarioLogado());
+
+        Pedido salvo = pedidoRepository.save(pedido);
+
+        auditoriaService.registrar(TipoOperacao.CANCELAMENTO, RegistroAuditoria.PEDIDO, salvo.getId(),
+                antes, auditoriaService.camposPedido(salvo), justificativa.trim());
+
+        return salvo;
+    }
+
+
+    @PreAuthorize("hasRole('GERENTE')")
+    public Pedido aplicarDesconto(String id, Double percentual) {
+        if (percentual == null || percentual.isNaN() || percentual < 0 || percentual > DESCONTO_MAXIMO) {
+            throw new IllegalArgumentException("O desconto deve ficar entre 0% e 20%.");
+        }
+
+        Pedido pedido = buscarOuFalhar(id);
+
+        if (pedido.getStatus() == StatusPedido.CANCELADO) {
+            throw new EstadoInvalidoException("Pedido cancelado não pode receber desconto.");
+        }
+        if (!pedido.getStatus().antesDaSaida()) {
+            throw new EstadoInvalidoException("O desconto só pode ser aplicado antes da saída para entrega ou retirada. Status atual: "
+                    + pedido.getStatus().getDescricao() + ".");
+        }
+
+        Map<String, String> antes = auditoriaService.camposPedido(pedido);
+
+        pedido.setDescontoPercentual(percentual);
+        pedido.recalcularTotal();
+        Pedido salvo = pedidoRepository.save(pedido);
+
+        auditoriaService.registrar(TipoOperacao.DESCONTO, RegistroAuditoria.PEDIDO, salvo.getId(),
+                antes, auditoriaService.camposPedido(salvo), null);
+
+        return salvo;
+    }
+
+    private Pedido buscarOuFalhar(String id) {
+        return pedidoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Pedido não encontrado."));
     }
 
     private StatusPedido converterStatus(String status) {

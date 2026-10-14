@@ -58,7 +58,12 @@
                         <div th:each="item : ${pedido.itens}"
                              th:text="${item.quantidade + '× ' + item.nomeProduto}"></div>
                     </td>
-                    <td th:text="${'R$ ' + #numbers.formatDecimal(pedido.valorTotal, 1, 'POINT', 2, 'COMMA')}"></td>
+                    <td>
+                        <span th:text="${'R$ ' + #numbers.formatDecimal(pedido.valorTotal, 1, 'POINT', 2, 'COMMA')}"></span>
+                        <span class="badge bg-info text-dark ms-1"
+                              th:if="${pedido.descontoPercentual != null and pedido.descontoPercentual > 0}"
+                              th:text="${'-' + #numbers.formatDecimal(pedido.descontoPercentual, 1, 2, 'COMMA') + '%'}"></span>
+                    </td>
                     <td th:text="${pedido.responsavel}"></td>
                     <td th:text="${#temporals.format(pedido.dataEntrada, 'dd/MM/yyyy HH:mm')}"></td>
                     <td>
@@ -75,6 +80,9 @@
                                                   (${pedido.status?.name() == 'EM_PREPARACAO'} ? 'bg-warning text-dark' : 'bg-secondary'))"
                                   th:text="${pedido.status?.descricao}">
                             </span>
+                        <div class="small text-muted mt-1"
+                             th:if="${pedido.status?.name() == 'CANCELADO'}"
+                             th:text="${'Motivo: ' + pedido.justificativaCancelamento}"></div>
                     </td>
                     <td class="text-end pe-4" sec:authorize="hasAnyRole('GERENTE','ATENDENTE')">
                         <button type="button" class="btn btn-sm btn-outline-primary ms-1"
@@ -83,6 +91,19 @@
                                 th:attr="data-pedido-id=${pedido.id}, data-status=${proximo.name()}"
                                 onclick="mudarStatus(this)">
                         </button>
+
+                        <span sec:authorize="hasRole('GERENTE')" th:if="${pedido.status?.antesDaSaida()}">
+                                <button type="button" class="btn btn-sm btn-outline-success ms-1"
+                                        th:attr="data-pedido-id=${pedido.id}"
+                                        onclick="aplicarDesconto(this)">
+                                    <i class="bi bi-percent"></i> Desconto
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger ms-1"
+                                        th:attr="data-pedido-id=${pedido.id}"
+                                        onclick="cancelarPedido(this)">
+                                    <i class="bi bi-x-circle"></i> Cancelar
+                                </button>
+                            </span>
                     </td>
                 </tr>
                 </tbody>
@@ -94,27 +115,73 @@
     </div>
 
     <script>
-        async function mudarStatus(botao) {
-            const id = botao.dataset.pedidoId;
-            const status = botao.dataset.status;
-            const csrfToken = document.querySelector('meta[name="_csrf"]').content;
-            const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+        function cabecalhoCsrf() {
+            const token = document.querySelector('meta[name="_csrf"]').content;
+            const header = document.querySelector('meta[name="_csrf_header"]').content;
+            return { [header]: token };
+        }
 
-            const resposta = await fetch(`/api/pedidos/${id}/status?status=${status}`, {
-                method: 'PUT',
-                headers: { [csrfHeader]: csrfToken }
-            });
+        async function mudarStatus(botao) {
+            const resposta = await fetch(
+                `/api/pedidos/${botao.dataset.pedidoId}/status?status=${botao.dataset.status}`,
+                { method: 'PUT', headers: cabecalhoCsrf() });
 
             if (resposta.ok) {
+                Mensagem.aposRecarregar('Status do pedido atualizado.');
                 window.location.reload();
             } else {
-                let mensagem = 'Erro ao atualizar o status.';
-                try {
-                    const dados = await resposta.json();
-                    if (dados.erro) mensagem = dados.erro;
-                } catch (e) { /* mantém a mensagem padrão */ }
-                alert(mensagem);
+                Mensagem.mostrar(await lerMensagemErro(resposta, 'Erro ao atualizar o status.'), 'danger');
             }
+        }
+
+        function aplicarDesconto(botao) {
+            Dialogo.abrir({
+                titulo: 'Aplicar desconto',
+                mensagem: 'O desconto substitui o anterior e é limitado a 20% do valor do pedido.',
+                campo: { tipo: 'numero', rotulo: 'Porcentagem de desconto (%)', placeholder: '0 a 20' },
+                confirmar: 'Aplicar desconto',
+                aoConfirmar: async (valor) => {
+                    const porcentagem = parseFloat(String(valor).replace(',', '.'));
+                    if (isNaN(porcentagem)) return 'Informe uma porcentagem válida.';
+
+                    const resposta = await fetch(`/api/pedidos/${botao.dataset.pedidoId}/desconto`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', ...cabecalhoCsrf() },
+                        body: JSON.stringify({ porcentagem: porcentagem })
+                    });
+                    if (!resposta.ok) return lerMensagemErro(resposta, 'Erro ao aplicar o desconto.');
+
+                    Mensagem.aposRecarregar('Desconto aplicado com sucesso.');
+                    window.location.reload();
+                    return null;
+                }
+            });
+        }
+
+        function cancelarPedido(botao) {
+            Dialogo.abrir({
+                titulo: 'Cancelar pedido',
+                mensagem: 'O pedido continuará no histórico com status Cancelado e não poderá mais ser alterado.',
+                campo: { tipo: 'texto', rotulo: 'Justificativa do cancelamento', placeholder: 'Descreva o motivo do cancelamento' },
+                confirmar: 'Cancelar pedido',
+                perigo: true,
+                aoConfirmar: async (justificativa) => {
+                    if (!justificativa || !justificativa.trim()) {
+                        return 'A justificativa do cancelamento é obrigatória.';
+                    }
+
+                    const resposta = await fetch(`/api/pedidos/${botao.dataset.pedidoId}/cancelar`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', ...cabecalhoCsrf() },
+                        body: JSON.stringify({ justificativa: justificativa })
+                    });
+                    if (!resposta.ok) return lerMensagemErro(resposta, 'Erro ao cancelar o pedido.');
+
+                    Mensagem.aposRecarregar('Pedido cancelado.');
+                    window.location.reload();
+                    return null;
+                }
+            });
         }
     </script>
 

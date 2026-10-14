@@ -28,5 +28,38 @@
 
         <script th:src="@{/js/script.js}"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+        <div class="modal fade" id="dialogoModal" tabindex="-1" aria-labelledby="dialogoTitulo" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="dialogoTitulo"></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="dialogoMensagem" class="text-muted"></p>
+                        <div id="dialogoCampoGrupo" class="d-none">
+                            <label class="form-label fw-medium" id="dialogoRotulo"></label>
+                            <input type="text" class="form-control d-none" id="dialogoInput">
+                            <textarea class="form-control d-none" id="dialogoTexto" rows="3" maxlength="300"></textarea>
+                        </div>
+                        <div class="alert alert-danger d-none mt-3 mb-0" id="dialogoErro" role="alert"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Voltar</button>
+                        <button type="button" class="btn btn-primary" id="dialogoConfirmar">Confirmar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1200;">
+            <div id="toastMensagem" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body"></div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
+                </div>
+            </div>
+        </div>
     </body>
 </html>
