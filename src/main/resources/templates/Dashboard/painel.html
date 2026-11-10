@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>Dashboard</title>
+</head>
+<body>
+
+<div th:fragment="content">
+
+  <style>
+    .kpi-valor { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+    .grafico-caixa { position: relative; height: 300px; }
+    .sem-dados {
+        position: absolute; inset: 0; display: none;
+        align-items: center; justify-content: center; text-align: center; padding: 1rem;
+    }
+    .sem-dados.visivel { display: flex; }
+    .carregando { opacity: .55; transition: opacity .2s; }
+  </style>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h2 class="fw-bold mb-0">
+        <i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard
+      </h2>
+      <small class="text-muted" id="periodoAplicado">&nbsp;</small>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <span class="spinner-border spinner-border-sm d-none" id="dashSpinner" role="status" aria-label="Carregando"></span>
+      <small class="text-muted" id="ultimaAtualizacao"></small>
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" role="switch" id="autoAtualizar" checked>
+        <label class="form-check-label small" for="autoAtualizar">Atualizar a cada 60 s</label>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm" id="btnAtualizar">
+        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+      </button>
+    </div>
+  </div>
+
+  <div class="alert alert-warning d-none" id="dashAviso" role="alert"></div>
+  <div class="alert alert-danger d-none align-items-center justify-content-between" id="dashErro" role="alert">
+    <span id="dashErroTexto"></span>
+    <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="btnTentarNovamente">Tentar novamente</button>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-lg-auto">
+          <label class="form-label small mb-1">Período rápido</label>
+          <div class="btn-group d-flex" role="group">
+            <button type="button" class="btn btn-outline-primary btn-sm" data-dias="1">Hoje</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" data-dias="7">7 dias</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" data-dias="30">30 dias</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnMesAtual">Este mês</button>
+          </div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label for="filtroInicio" class="form-label small mb-1">De</label>
+          <input type="date" class="form-control form-control-sm" id="filtroInicio">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label for="filtroFim" class="form-label small mb-1">Até</label>
+          <input type="date" class="form-control form-control-sm" id="filtroFim">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label for="filtroStatus" class="form-label small mb-1">Status</label>
+          <select class="form-select form-select-sm" id="filtroStatus">
+            <option value="">Todos os status</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label for="filtroTipo" class="form-label small mb-1">Tipo de produto</label>
+          <select class="form-select form-select-sm" id="filtroTipo">
+            <option value="">Todos os tipos</option>
+          </select>
+        </div>
+        <div class="col-12 col-lg-auto">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btnLimpar">Limpar filtros</button>
+        </div>
+      </div>
+      <div class="form-text mt-2">
+        Os filtros valem para os indicadores e gráficos. A lista de pedidos em andamento mostra sempre a situação atual.
+      </div>
+    </div>
+  </div>
+
+  <div id="painel">
+
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-cash-coin me-1"></i>Faturamento</div>
+          <div class="kpi-valor" id="kpiFaturamento">—</div>
+          <div class="text-muted small">pedidos não cancelados, com desconto</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-bag-check me-1"></i>Pedidos vendidos</div>
+          <div class="kpi-valor" id="kpiPedidos">—</div>
+          <div class="text-muted small" id="kpiPedidosDetalhe"></div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-receipt me-1"></i>Ticket médio</div>
+          <div class="kpi-valor" id="kpiTicket">—</div>
+          <div class="text-muted small">faturamento por pedido</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-box-seam me-1"></i>Itens vendidos</div>
+          <div class="kpi-valor" id="kpiItens">—</div>
+          <div class="text-muted small">soma das quantidades</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-percent me-1"></i>Descontos concedidos</div>
+          <div class="kpi-valor" id="kpiDesconto">—</div>
+          <div class="text-muted small">valor abatido nos pedidos</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-x-circle me-1"></i>Cancelamentos</div>
+          <div class="kpi-valor" id="kpiCancelados">—</div>
+          <div class="text-muted small" id="kpiCanceladosDetalhe"></div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <div class="text-muted small"><i class="bi bi-stopwatch me-1"></i>Tempo médio de saída</div>
+          <div class="kpi-valor" id="kpiTempo">—</div>
+          <div class="text-muted small">da entrada até a entrega ou retirada</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-xl-8">
+        <div class="card shadow-sm h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Vendas ao longo do tempo</span>
+            <select class="form-select form-select-sm w-auto" id="agrupamento" aria-label="Agrupamento">
+              <option value="dia">Por dia</option>
+              <option value="mes">Por mês</option>
+            </select>
+          </div>
+          <div class="card-body">
+            <div class="grafico-caixa">
+              <canvas id="graficoPeriodo"></canvas>
+              <div class="sem-dados text-muted" id="avisoPeriodo"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header fw-semibold">Faturamento por tipo de produto</div>
+          <div class="card-body">
+            <div class="grafico-caixa">
+              <canvas id="graficoTipo"></canvas>
+              <div class="sem-dados text-muted" id="avisoTipo"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-xl-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Faturamento por horário de entrada</span>
+            <small class="text-muted" id="picoHorario"></small>
+          </div>
+          <div class="card-body">
+            <div class="grafico-caixa">
+              <canvas id="graficoHorario"></canvas>
+              <div class="sem-dados text-muted" id="avisoHorario"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header fw-semibold">Situação dos pedidos</div>
+          <div class="card-body">
+            <div class="grafico-caixa">
+              <canvas id="graficoStatus"></canvas>
+              <div class="sem-dados text-muted" id="avisoStatus"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-xl-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span class="fw-semibold">Produtos mais vendidos</span>
+            <div class="d-flex gap-2">
+              <select class="form-select form-select-sm w-auto" id="rankOrdem" aria-label="Ordenar por">
+                <option value="quantidade">Por quantidade</option>
+                <option value="faturamento">Por faturamento</option>
+              </select>
+              <select class="form-select form-select-sm w-auto" id="rankLimite" aria-label="Quantidade de produtos">
+                <option value="5">Top 5</option>
+                <option value="10">Top 10</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <table class="table align-middle mb-0">
+              <thead>
+              <tr>
+                <th class="ps-3" style="width: 40px;">#</th>
+                <th>Produto</th>
+                <th class="text-end">Qtd.</th>
+                <th class="text-end pe-3">Faturamento</th>
+              </tr>
+              </thead>
+              <tbody id="tabelaRanking"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-7">
+        <div class="card shadow-sm h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Pedidos em andamento <span class="badge bg-secondary ms-1" id="contadorAndamento">0</span></span>
+            <small class="text-muted">situação atual, os mais antigos primeiro</small>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table align-middle mb-0">
+                <thead>
+                <tr>
+                  <th class="ps-3">Pedido</th>
+                  <th>Cliente</th>
+                  <th>Status</th>
+                  <th>Valor</th>
+                  <th>Entrada</th>
+                  <th>Em aberto há</th>
+                </tr>
+                </thead>
+                <tbody id="tabelaAndamento"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script th:inline="none">
+    (function () {
+        'use strict';
+
+        const INTERVALO_ATUALIZACAO_MS = 60000;
+        const ALERTA_MINUTOS = 45;
+
+        const CORES = ['#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1', '#20c997', '#fd7e14', '#0dcaf0'];
+        const COR_STATUS = {
+            RECEBIDO: '#6c757d', EM_PREPARACAO: '#ffc107', PRONTO: '#0dcaf0',
+            SAIU_PARA_ENTREGA: '#0d6efd', RETIRADO: '#6f42c1', FINALIZADO: '#198754', CANCELADO: '#dc3545'
+        };
+        const CLASSE_STATUS = {
+            RECEBIDO: 'bg-secondary', EM_PREPARACAO: 'bg-warning text-dark', PRONTO: 'bg-info text-dark',
+            SAIU_PARA_ENTREGA: 'bg-primary', RETIRADO: 'bg-dark', FINALIZADO: 'bg-success', CANCELADO: 'bg-danger'
+        };
+
+        const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+        const inteiro = new Intl.NumberFormat('pt-BR');
+        const temGraficos = typeof Chart !== 'undefined';
+
+        if (temGraficos) {
+            Chart.defaults.color = getComputedStyle(document.body).color;
+            Chart.defaults.borderColor = 'rgba(128, 128, 128, 0.25)';
+        }
+
+        const graficos = {};
+        const contadores = {};
+        let temporizador = null;
+
+        function $(id) {
+            return document.getElementById(id);
+        }
+
+        function escapar(texto) {
+            const mapa = { '&': '&amp;', '\u003c': '&lt;', '\u003e': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return String(texto == null ? '' : texto).replace(/[&\u003c\u003e"']/g, function (c) { return mapa[c]; });
+        }
+
+        function dataLocal(d) {
+            const mes = String(d.getMonth() + 1).padStart(2, '0');
+            const dia = String(d.getDate()).padStart(2, '0');
+            return d.getFullYear() + '-' + mes + '-' + dia;
+        }
+
+        function rotuloDia(iso) {
+            return iso.substring(8, 10) + '/' + iso.substring(5, 7);
+        }
+
+        function rotuloMes(iso) {
+            return iso.substring(5, 7) + '/' + iso.substring(0, 4);
+        }
+
+        function formatarData(iso) {
+            return iso.substring(8, 10) + '/' + iso.substring(5, 7) + '/' + iso.substring(0, 4);
+        }
+
+        function formatarDataHora(texto) {
+            return new Date(texto).toLocaleString('pt-BR',
+                { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatarMinutos(min) {
+            if (min == null) return '—';
+            if (min < 60) return min + ' min';
+            const horas = Math.floor(min / 60);
+            if (horas >= 24) return Math.floor(horas / 24) + 'd ' + (horas % 24) + 'h';
+            return horas + 'h ' + String(min % 60).padStart(2, '0') + 'min';
+        }
+
+        function linhaMensagem(colunas, texto, erro) {
+            return '<tr><td colspan="' + colunas + '" class="text-center py-4 '
+                + (erro ? 'text-danger' : 'text-muted') + '">' + escapar(texto) + '</td></tr>';
+        }
+
+        function filtros() {
+            return {
+                inicio: $('filtroInicio').value,
+                fim: $('filtroFim').value,
+                status: $('filtroStatus').value,
+                tipo: $('filtroTipo').value
+            };
+        }
+
+        function query(extra) {
+            const params = new URLSearchParams();
+            const todos = Object.assign({}, filtros(), extra || {});
+            Object.keys(todos).forEach(function (chave) {
+                if (todos[chave]) params.append(chave, todos[chave]);
+            });
+            const texto = params.toString();
+            return texto ? '?' + texto : '';
+        }
+
+        function definirPeriodoDias(dias) {
+            const fim = new Date();
+            const inicio = new Date();
+            inicio.setDate(inicio.getDate() - (dias - 1));
+            $('filtroInicio').value = dataLocal(inicio);
+            $('filtroFim').value = dataLocal(fim);
+        }
+
+        function definirMesAtual() {
+            const hoje = new Date();
+            $('filtroInicio').value = dataLocal(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+            $('filtroFim').value = dataLocal(hoje);
+        }
+
+        function validarFiltros() {
+            const inicio = $('filtroInicio').value;
+            const fim = $('filtroFim').value;
+            if (inicio && fim) {
+                if (inicio > fim) return 'A data inicial não pode ser posterior à data final.';
+                const dias = (new Date(fim) - new Date(inicio)) / 86400000 + 1;
+                if (dias > 366) return 'O período máximo é de 366 dias.';
+            }
+            return null;
+        }
+
+        function preencherFiltros(f) {
+            $('filtroStatus').innerHTML = '<option value="">Todos os status</option>'
+                + f.status.map(function (s) {
+                    return '<option value="' + escapar(s.valor) + '">' + escapar(s.descricao) + '</option>';
+                }).join('');
+            $('filtroTipo').innerHTML = '<option value="">Todos os tipos</option>'
+                + f.tipos.map(function (t) {
+                    return '<option value="' + escapar(t) + '">' + escapar(t) + '</option>';
+                }).join('');
+        }
+
+        function mostrarAviso(texto) {
+            $('dashAviso').textContent = texto;
+            $('dashAviso').classList.remove('d-none');
+        }
+
+        function esconderAviso() {
+            $('dashAviso').classList.add('d-none');
+        }
+
+        function mostrarErro(texto) {
+            $('dashErroTexto').textContent = texto;
+            $('dashErro').classList.remove('d-none');
+            $('dashErro').classList.add('d-flex');
+        }
+
+        function esconderErro() {
+            $('dashErro').classList.remove('d-flex');
+            $('dashErro').classList.add('d-none');
+        }
+
+        function definirCarregando(carregando) {
+            $('dashSpinner').classList.toggle('d-none', !carregando);
+            $('painel').classList.toggle('carregando', carregando);
+        }
+
+        async function buscarJson(url) {
+            let resposta;
+            try {
+                resposta = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+            } catch (e) {
+                throw new Error('Não foi possível conectar ao servidor.');
+            }
+            if (resposta.redirected && resposta.url.indexOf('/login') !== -1) {
+                throw new Error('Sua sessão expirou. Faça login novamente.');
+            }
+            if (!resposta.ok) {
+                let mensagem = 'Erro ao consultar os dados (código ' + resposta.status + ').';
+                if (resposta.status === 403) {
+                    mensagem = 'Você não tem permissão para ver o dashboard.';
+                } else {
+                    try {
+                        const dados = await resposta.json();
+                        if (dados.erro) mensagem = dados.erro;
+                    } catch (e) { /* mantém a mensagem padrão */ }
+                }
+                throw new Error(mensagem);
+            }
+            return resposta.json();
+        }
+
+        async function secao(nome, url, renderizar, falhar) {
+            contadores[nome] = (contadores[nome] || 0) + 1;
+            const meu = contadores[nome];
+            try {
+                const dados = await buscarJson(url);
+                if (meu !== contadores[nome]) return null;
+                renderizar(dados);
+                return null;
+            } catch (e) {
+                if (meu !== contadores[nome]) return null;
+                falhar(e.message);
+                return e.message;
+            }
+        }
+
+        function desenhar(chave, canvasId, avisoId, config, vazio) {
+            const aviso = $(avisoId);
+            aviso.classList.remove('text-danger');
+            aviso.textContent = vazio ? 'Sem dados no período selecionado.' : '';
+            aviso.classList.toggle('visivel', vazio);
+
+            if (graficos[chave]) {
+                graficos[chave].destroy();
+                delete graficos[chave];
+            }
+            if (vazio) return;
+
+            if (!temGraficos) {
+                aviso.textContent = 'A biblioteca de gráficos não pôde ser carregada.';
+                aviso.classList.add('visivel');
+                return;
+            }
+            graficos[chave] = new Chart($(canvasId), config);
+        }
+
+        function falhaGrafico(chave, avisoId) {
+            if (graficos[chave]) {
+                graficos[chave].destroy();
+                delete graficos[chave];
+            }
+            const aviso = $(avisoId);
+            aviso.textContent = 'Não foi possível carregar este gráfico.';
+            aviso.classList.add('text-danger', 'visivel');
+        }
+
+        function renderResumo(r) {
+            $('periodoAplicado').textContent = 'Período: ' + formatarData(r.inicio) + ' a ' + formatarData(r.fim);
+            $('kpiFaturamento').textContent = moeda.format(r.faturamento);
+            $('kpiPedidos').textContent = inteiro.format(r.pedidosVendidos);
+            $('kpiPedidosDetalhe').textContent = inteiro.format(r.totalPedidos) + ' no total, com cancelados';
+            $('kpiTicket').textContent = moeda.format(r.ticketMedio);
+            $('kpiItens').textContent = inteiro.format(r.itensVendidos);
+            $('kpiDesconto').textContent = moeda.format(r.descontoTotal);
+            $('kpiCancelados').textContent = inteiro.format(r.pedidosCancelados);
+            $('kpiCanceladosDetalhe').textContent = r.taxaCancelamento.toFixed(1).replace('.', ',') + '% dos pedidos';
+            $('kpiTempo').textContent = r.tempoMedioSaidaMinutos == null
+                ? '—' : formatarMinutos(Math.round(r.tempoMedioSaidaMinutos));
+        }
+
+        function falhaResumo() {
+            ['kpiFaturamento', 'kpiPedidos', 'kpiTicket', 'kpiItens', 'kpiDesconto', 'kpiCancelados', 'kpiTempo']
+                .forEach(function (id) { $(id).textContent = '—'; });
+            ['kpiPedidosDetalhe', 'kpiCanceladosDetalhe'].forEach(function (id) { $(id).textContent = ''; });
+        }
+
+        function renderPeriodo(lista) {
+            const porMes = $('agrupamento').value === 'mes';
+            const rotulos = lista.map(function (p) { return porMes ? rotuloMes(p.periodo) : rotuloDia(p.periodo); });
+            const vazio = lista.every(function (p) { return p.pedidos === 0 && p.faturamento === 0; });
+
+            desenhar('periodo', 'graficoPeriodo', 'avisoPeriodo', {
+                type: 'bar',
+                data: {
+                    labels: rotulos,
+                    datasets: [
+                        {
+                            type: 'bar', label: 'Pedidos',
+                            data: lista.map(function (p) { return p.pedidos; }),
+                            backgroundColor: 'rgba(13, 110, 253, 0.35)', borderColor: '#0d6efd', borderWidth: 1,
+                            yAxisID: 'y1', order: 2
+                        },
+                        {
+                            type: 'line', label: 'Faturamento (R$)',
+                            data: lista.map(function (p) { return p.faturamento; }),
+                            borderColor: '#198754', backgroundColor: '#198754', tension: 0.25,
+                            pointRadius: lista.length > 40 ? 0 : 3, yAxisID: 'y', order: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } },
+                        y: {
+                            beginAtZero: true, position: 'left',
+                            ticks: { callback: function (v) { return moeda.format(v); } }
+                        },
+                        y1: {
+                            beginAtZero: true, position: 'right',
+                            grid: { drawOnChartArea: false }, ticks: { precision: 0 }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    return ctx.dataset.yAxisID === 'y'
+                                        ? ' Faturamento: ' + moeda.format(ctx.parsed.y)
+                                        : ' Pedidos: ' + ctx.parsed.y;
+                                }
+                            }
+                        }
+                    }
+                }
+            }, vazio);
+        }
+
+        function renderTipo(lista) {
+            const vazio = lista.length === 0 || lista.every(function (t) { return t.faturamento === 0; });
+
+            desenhar('tipo', 'graficoTipo', 'avisoTipo', {
+                type: 'doughnut',
+                data: {
+                    labels: lista.map(function (t) { return t.tipo; }),
+                    datasets: [{
+                        data: lista.map(function (t) { return t.faturamento; }),
+                        backgroundColor: lista.map(function (t, i) { return CORES[i % CORES.length]; })
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    const t = lista[ctx.dataIndex];
+                                    return ' ' + t.tipo + ': ' + moeda.format(t.faturamento)
+                                        + ' (' + inteiro.format(t.quantidade) + ' itens)';
+                                }
+                            }
+                        }
+                    }
+                }
+            }, vazio);
+        }
+
+        function renderHorario(lista) {
+            const vazio = lista.every(function (h) { return h.pedidos === 0; });
+            const maior = Math.max.apply(null, lista.map(function (h) { return h.faturamento; }));
+            const pico = lista.find(function (h) { return maior > 0 && h.faturamento === maior; });
+            $('picoHorario').textContent = pico
+                ? 'Pico: ' + pico.hora + 'h (' + inteiro.format(pico.pedidos) + ' pedidos)' : '';
+
+            desenhar('horario', 'graficoHorario', 'avisoHorario', {
+                type: 'bar',
+                data: {
+                    labels: lista.map(function (h) { return h.hora + 'h'; }),
+                    datasets: [{
+                        label: 'Faturamento',
+                        data: lista.map(function (h) { return h.faturamento; }),
+                        backgroundColor: lista.map(function (h) {
+                            return (maior > 0 && h.faturamento === maior) ? '#fd7e14' : 'rgba(13, 110, 253, 0.5)';
+                        })
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: function (v) { return moeda.format(v); } } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    const h = lista[ctx.dataIndex];
+                                    return ' ' + moeda.format(h.faturamento) + ' em ' + inteiro.format(h.pedidos) + ' pedidos';
+                                }
+                            }
+                        }
+                    }
+                }
+            }, vazio);
+        }
+
+        function renderStatus(lista) {
+            const vazio = lista.every(function (s) { return s.quantidade === 0; });
+
+            desenhar('status', 'graficoStatus', 'avisoStatus', {
+                type: 'bar',
+                data: {
+                    labels: lista.map(function (s) { return s.descricao; }),
+                    datasets: [{
+                        label: 'Pedidos',
+                        data: lista.map(function (s) { return s.quantidade; }),
+                        backgroundColor: lista.map(function (s) { return COR_STATUS[s.status] || '#6c757d'; })
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            }, vazio);
+        }
+
+        function renderAndamento(lista) {
+            const corpo = $('tabelaAndamento');
+            $('contadorAndamento').textContent = lista.length;
+            if (lista.length === 0) {
+                corpo.innerHTML = linhaMensagem(6, 'Nenhum pedido em andamento no momento.');
+                return;
+            }
+            corpo.innerHTML = lista.map(function (p) {
+                const atrasado = p.minutosEmAberto > ALERTA_MINUTOS;
+                return '<tr>'
+                    + '<td class="ps-3 text-muted">#' + escapar(String(p.id).slice(-6).toUpperCase()) + '</td>'
+                    + '<td>' + escapar(p.cliente) + '</td>'
+                    + '<td><span class="badge ' + (CLASSE_STATUS[p.status] || 'bg-secondary') + '">'
+                    + escapar(p.statusDescricao) + '</span></td>'
+                    + '<td>' + moeda.format(p.valorTotal) + '</td>'
+                    + '<td>' + formatarDataHora(p.dataEntrada) + '</td>'
+                    + '<td class="' + (atrasado ? 'text-danger fw-semibold' : '') + '">'
+                    + formatarMinutos(p.minutosEmAberto) + '</td>'
+                    + '</tr>';
+            }).join('');
+        }
+
+        function falhaAndamento() {
+            $('contadorAndamento').textContent = '0';
+            $('tabelaAndamento').innerHTML = linhaMensagem(6, 'Não foi possível carregar os pedidos em andamento.', true);
+        }
+
+        function renderRanking(lista) {
+            const corpo = $('tabelaRanking');
+            if (lista.length === 0) {
+                corpo.innerHTML = linhaMensagem(4, 'Sem vendas no período selecionado.');
+                return;
+            }
+            const porFaturamento = $('rankOrdem').value === 'faturamento';
+            const referencia = porFaturamento ? lista[0].faturamento : lista[0].quantidade;
+
+            corpo.innerHTML = lista.map(function (p) {
+                const valor = porFaturamento ? p.faturamento : p.quantidade;
+                const largura = referencia > 0 ? Math.round(valor * 100 / referencia) : 0;
+                return '<tr>'
+                    + '<td class="ps-3 fw-semibold">' + p.posicao + '</td>'
+                    + '<td>' + escapar(p.nome)
+                    + ' <small class="text-muted">' + escapar(p.tipo) + '</small>'
+                    + '<div class="progress mt-1" style="height: 5px;">'
+                    + '<div class="progress-bar" role="progressbar" style="width: ' + largura + '%"></div></div></td>'
+                    + '<td class="text-end">' + inteiro.format(p.quantidade) + '</td>'
+                    + '<td class="text-end pe-3">' + moeda.format(p.faturamento) + '</td>'
+                    + '</tr>';
+            }).join('');
+        }
+
+        function falhaRanking() {
+            $('tabelaRanking').innerHTML = linhaMensagem(4, 'Não foi possível carregar o ranking.', true);
+        }
+
+        function carregarResumo() {
+            return secao('resumo', '/api/dashboard/resumo' + query(), renderResumo, falhaResumo);
+        }
+
+        function carregarPeriodo() {
+            return secao('periodo',
+                '/api/dashboard/vendas-por-periodo' + query({ agrupamento: $('agrupamento').value }),
+                renderPeriodo, function () { falhaGrafico('periodo', 'avisoPeriodo'); });
+        }
+
+        function carregarTipo() {
+            return secao('tipo', '/api/dashboard/vendas-por-tipo' + query(),
+                renderTipo, function () { falhaGrafico('tipo', 'avisoTipo'); });
+        }
+
+        function carregarHorario() {
+            return secao('horario', '/api/dashboard/vendas-por-horario' + query(),
+                renderHorario, function () { falhaGrafico('horario', 'avisoHorario'); });
+        }
+
+        function carregarStatus() {
+            return secao('status', '/api/dashboard/pedidos-por-status' + query(),
+                renderStatus, function () { falhaGrafico('status', 'avisoStatus'); });
+        }
+
+        function carregarAndamento() {
+            return secao('andamento', '/api/dashboard/pedidos-em-andamento', renderAndamento, falhaAndamento);
+        }
+
+        function carregarRanking() {
+            return secao('ranking',
+                '/api/dashboard/produtos-mais-vendidos'
+                + query({ limite: $('rankLimite').value, ordenarPor: $('rankOrdem').value }),
+                renderRanking, falhaRanking);
+        }
+
+        async function carregarTudo() {
+            const problema = validarFiltros();
+            if (problema) {
+                mostrarAviso(problema);
+                return;
+            }
+            esconderAviso();
+            esconderErro();
+            definirCarregando(true);
+
+            const mensagens = await Promise.all([
+                carregarResumo(), carregarPeriodo(), carregarTipo(), carregarHorario(),
+                carregarStatus(), carregarAndamento(), carregarRanking()
+            ]);
+
+            definirCarregando(false);
+
+            const erros = Array.from(new Set(mensagens.filter(Boolean)));
+            if (erros.length > 0) {
+                mostrarErro(erros.join(' '));
+                $('ultimaAtualizacao').textContent = 'Falha na atualização';
+            } else {
+                $('ultimaAtualizacao').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+            }
+        }
+
+        async function recarregarSecao(carregar) {
+            esconderErro();
+            const mensagem = await carregar();
+            if (mensagem) mostrarErro(mensagem);
+        }
+
+        function configurarAutoAtualizacao() {
+            if (temporizador) {
+                clearInterval(temporizador);
+                temporizador = null;
+            }
+            if ($('autoAtualizar').checked) {
+                temporizador = setInterval(function () {
+                    if (!document.hidden) carregarTudo();
+                }, INTERVALO_ATUALIZACAO_MS);
+            }
+        }
+
+        document.querySelectorAll('[data-dias]').forEach(function (botao) {
+            botao.addEventListener('click', function () {
+                definirPeriodoDias(parseInt(botao.dataset.dias, 10));
+                carregarTudo();
+            });
+        });
+        $('btnMesAtual').addEventListener('click', function () {
+            definirMesAtual();
+            carregarTudo();
+        });
+        ['filtroInicio', 'filtroFim', 'filtroStatus', 'filtroTipo'].forEach(function (id) {
+            $(id).addEventListener('change', carregarTudo);
+        });
+        $('btnLimpar').addEventListener('click', function () {
+            definirPeriodoDias(30);
+            $('filtroStatus').value = '';
+            $('filtroTipo').value = '';
+            carregarTudo();
+        });
+        $('btnAtualizar').addEventListener('click', carregarTudo);
+        $('btnTentarNovamente').addEventListener('click', carregarTudo);
+        $('agrupamento').addEventListener('change', function () { recarregarSecao(carregarPeriodo); });
+        $('rankOrdem').addEventListener('change', function () { recarregarSecao(carregarRanking); });
+        $('rankLimite').addEventListener('change', function () { recarregarSecao(carregarRanking); });
+        $('autoAtualizar').addEventListener('change', configurarAutoAtualizacao);
+
+        async function iniciar() {
+            definirPeriodoDias(30);
+            try {
+                preencherFiltros(await buscarJson('/api/dashboard/filtros'));
+            } catch (e) {
+                mostrarErro(e.message);
+            }
+            await carregarTudo();
+            configurarAutoAtualizacao();
+        }
+
+        iniciar();
+    })();
+  </script>
+
+</div>
+
+</body>
+</html>

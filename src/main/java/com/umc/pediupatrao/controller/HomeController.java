@@ -230,6 +230,12 @@ public class HomeController {
         return "layout";
     }
 
+    @GetMapping("/dashboard")
+    public String dashboard(Model model) {
+        model.addAttribute("content", "dashboard/painel :: content");
+        return "layout";
+    }
+
     @GetMapping("/teste")
     public String teste() {
         return "teste";
