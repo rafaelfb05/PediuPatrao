@@ -17,4 +17,8 @@ public interface PedidoRepository extends MongoRepository<Pedido, String> {
     List<Pedido> buscarPorPeriodo(LocalDateTime inicio, LocalDateTime fim);
 
     List<Pedido> findByStatusIn(Collection<StatusPedido> status);
+
+    boolean existsByResponsavel(String responsavel);
+
+    long deleteByResponsavel(String responsavel);
 }
