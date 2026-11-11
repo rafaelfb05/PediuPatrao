@@ -1,12 +1,7 @@
 package com.umc.pediupatrao.security;
 
 import com.umc.pediupatrao.config.SecurityConfig;
-import com.umc.pediupatrao.service.AuditoriaService;
-import com.umc.pediupatrao.service.ClienteService;
-import com.umc.pediupatrao.service.PedidoService;
-import com.umc.pediupatrao.service.ProdutoService;
-import com.umc.pediupatrao.service.UsuarioDetailsService;
-import com.umc.pediupatrao.service.UsuarioService;
+import com.umc.pediupatrao.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +47,8 @@ class AutorizacaoPorPerfilTest {
     private AuditoriaService auditoriaService;
     @MockitoBean
     private UsuarioDetailsService usuarioDetailsService;
+    @MockitoBean
+    private DashboardService dashboardService;
 
     @BeforeEach
     void preparar() {
@@ -91,7 +88,14 @@ class AutorizacaoPorPerfilTest {
             "ADMIN,     GET,    /pedidos/novo",
             "ADMIN,     POST,   /api/produtos",
             "ADMIN,     DELETE, /api/auditoria/a1",
-            "ADMIN,     POST,   /api/auditoria"
+            "ADMIN,     POST,   /api/auditoria",
+
+            "ATENDENTE, GET,    /api/dashboard/resumo",
+            "ATENDENTE, GET,    /api/dashboard/pedidos-em-andamento",
+            "ATENDENTE, GET,    /dashboard",
+            "ADMIN,     POST,   /api/dashboard/resumo",
+            "GERENTE,   PUT,    /api/dashboard/resumo",
+            "GERENTE,   DELETE, /api/dashboard/resumo"
     })
     @DisplayName("Operação fora das permissões do perfil retorna 403")
     void operacaoNaoAutorizadaRetorna403(String perfil, String metodo, String url) throws Exception {
@@ -123,7 +127,13 @@ class AutorizacaoPorPerfilTest {
             "ADMIN,     GET,    /api/produtos",
             "ADMIN,     GET,    /api/auditoria",
             "ADMIN,     GET,    /api/usuarios",
-            "ADMIN,     POST,   /api/usuarios"
+            "ADMIN,     POST,   /api/usuarios",
+
+            "GERENTE,   GET,    /api/dashboard/resumo",
+            "GERENTE,   GET,    /api/dashboard/vendas-por-periodo?agrupamento=mes",
+            "GERENTE,   GET,    /api/dashboard/produtos-mais-vendidos?limite=3",
+            "ADMIN,     GET,    /api/dashboard/resumo",
+            "ADMIN,     GET,    /api/dashboard/filtros"
     })
     @DisplayName("Operação dentro das permissões do perfil passa pela segurança")
     void operacaoAutorizadaPassaPelaSeguranca(String perfil, String metodo, String url) throws Exception {
@@ -140,7 +150,8 @@ class AutorizacaoPorPerfilTest {
             "GET,    /usuarios",
             "POST,   /api/usuarios",
             "DELETE, /api/clientes/c1",
-            "PUT,    /api/pedidos/p1/cancelar"
+            "PUT,    /api/pedidos/p1/cancelar",
+            "GET,    /api/dashboard/resumo"
     })
     @DisplayName("Sem autenticação, rotas protegidas redirecionam para o login")
     void semLoginRedirecionaParaLogin(String metodo, String url) throws Exception {
